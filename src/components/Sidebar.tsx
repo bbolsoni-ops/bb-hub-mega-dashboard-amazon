@@ -90,6 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'mom_aoa', label: 'Comparativo MoM / MTD', icon: BarChart3 },
     { id: 'ai_chatbot', label: 'Consultor IA', icon: Bot },
     { id: 'pdf_report', label: 'Relatório Executivo', icon: FileText },
+    { id: 'setup', label: 'Setup da Conta', icon: Layers },
   ];
 
   const isCurrentActive = (item: { id: string; altIds?: string[] }) => {
