@@ -455,7 +455,7 @@ const allSkuRows = Array.from(skuMap.values());
     }
 
     
-    const dbaCalc = calculateDbaFee(pmv, weightGrams, hasSp50Discount);
+    const dbaCalc = calculateDbaFee(   pmv,   weightGrams,   hasSp50Discount,   sellerSetup.dbaOriginRegion );
     const dbaFee = overrides.dbaFee ?? dbaCalc.effectiveFee;
 
     const fbaCalc = calculateFbaFee(pmv, weightGrams, fbaProgram, adsPercentForRule);
