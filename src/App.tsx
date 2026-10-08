@@ -21,7 +21,6 @@ import { ConsolidatedPdfReport } from './components/ConsolidatedPdfReport';
 import { ConsolidatedReportModal } from './components/ConsolidatedReportModal';
 import { AcceptanceTestsModal } from './components/AcceptanceTestsModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SetupView } from './components/SetupView';
 import { getDemoDataset } from './utils/demoData';
 import { createEmptyDataset } from './utils/csvParser';
 import { reconcileAmazonData } from './utils/dataReconciler';
@@ -34,9 +33,6 @@ import {
   calculateFbaFee,
   AMAZON_BR_CATEGORIES,
 } from './utils/amazonFeesCalculator';
-import { DEFAULT_SELLER_SETUP, SellerSetup, fbaProgramFromSetup } from './config/sellerSetup';
-
-const SETUP_STORAGE_KEY = 'bb_hub_seller_setup';
 
 export default function App() {
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
@@ -47,20 +43,6 @@ export default function App() {
   const [isTestsModalOpen, setIsTestsModalOpen] = useState<boolean>(false);
   const [isDirectDownloadingPdf, setIsDirectDownloadingPdf] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-
-  const [sellerSetup, setSellerSetup] = useState<SellerSetup>(() => {
-    try {
-      const raw = localStorage.getItem(SETUP_STORAGE_KEY);
-      if (raw) return { ...DEFAULT_SELLER_SETUP, ...JSON.parse(raw) };
-    } catch {
-      // setup salvo inválido: usa o padrão
-    }
-    return DEFAULT_SELLER_SETUP;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(sellerSetup));
-  }, [sellerSetup]);
 
   const handleNavigateTab = (tab: string, subTab?: string) => {
     setActiveTab(tab);
@@ -150,27 +132,19 @@ export default function App() {
     setActionPlan(reconciled.actionPlan);
   }, [reconciled]);
 
-  // Investimento em Ads da CONTA (regra do Experimente FBA+ é por conta, não por SKU)
-  const accountAdsPercent = useMemo(() => {
-    const totalAds = reconciled.skusSummary.reduce((sum, s) => sum + (s.adsSpend || 0), 0);
-    const totalGross = reconciled.skusSummary.reduce((sum, s) => sum + (s.grossSales || 0), 0);
-    return totalGross > 0 ? (totalAds / totalGross) * 100 : 0;
-  }, [reconciled.skusSummary]);
-
-  const adsPercentForRule = sellerSetup.adsInvestmentPercentLast30d ?? accountAdsPercent;
-
-  // Recalcula as tarifas de TODOS os SKUs com o Setup do cliente; overrides manuais continuam valendo
+  // Merge custom economics overrides with reconciled skus
   const skusWithEconomics = useMemo(() => {
     return reconciled.skusSummary.map((item) => {
-      const overrides = customSkuEconomics[item.sku] ?? {};
+      const overrides = customSkuEconomics[item.sku];
+      if (!overrides) return item;
 
       const cogs = overrides.cogs !== undefined ? overrides.cogs : item.cogs;
       const categoryId = overrides.categoryId || item.categoryId || 'casa_cozinha';
       const categoryObj = AMAZON_BR_CATEGORIES.find((c) => c.id === categoryId);
       const categoryName = categoryObj ? categoryObj.name : item.categoryName;
       const weightGrams = overrides.weightGrams !== undefined ? overrides.weightGrams : (item.weightGrams || 450);
-      const hasSp50Discount = overrides.hasSp50Discount !== undefined ? overrides.hasSp50Discount : sellerSetup.dbaHalfFeePromoActive;
-      const fbaProgram = overrides.fbaProgram || fbaProgramFromSetup(sellerSetup);
+      const hasSp50Discount = overrides.hasSp50Discount !== undefined ? overrides.hasSp50Discount : (item.hasSp50Discount ?? true);
+      const fbaProgram = overrides.fbaProgram || item.fbaProgram || 'experimente_r6';
       const logisticsChannel = overrides.logisticsChannel || item.logisticsChannel;
 
       const commCalc = calculateAmazonCommission(
@@ -181,10 +155,11 @@ export default function App() {
       const commissionPercent = overrides.commissionPercent !== undefined ? overrides.commissionPercent : commCalc.effectivePercent;
       const commissionAmount = (item.pmv * commissionPercent) / 100;
 
-      const dbaCalc = calculateDbaFee(item.pmv, weightGrams, hasSp50Discount, sellerSetup.dbaOriginRegion);
+      const skuAdsPercent = item.grossSales > 0 ? (item.adsSpend / item.grossSales) * 100 : 0;
+      const dbaCalc = calculateDbaFee(item.pmv, weightGrams, hasSp50Discount);
       const dbaFee = overrides.dbaFee !== undefined ? overrides.dbaFee : dbaCalc.effectiveFee;
 
-      const fbaCalc = calculateFbaFee(item.pmv, weightGrams, fbaProgram, adsPercentForRule);
+      const fbaCalc = calculateFbaFee(item.pmv, weightGrams, fbaProgram, skuAdsPercent);
       const fbaFee = overrides.fbaFee !== undefined ? overrides.fbaFee : fbaCalc.effectiveFee;
 
       const logisticsFeeUnit = logisticsChannel === 'FBA' ? fbaFee : logisticsChannel === 'DBA' ? dbaFee : 0;
@@ -244,7 +219,7 @@ export default function App() {
         costsComplete: hasCogsProvided,
       };
     });
-  }, [reconciled.skusSummary, customSkuEconomics, sellerSetup, adsPercentForRule]);
+  }, [reconciled.skusSummary, customSkuEconomics]);
 
   const handleUpdateSkuEconomics = (sku: string, updates: Partial<SkuUnitEconomics>) => {
     setCustomSkuEconomics((prev) => ({
@@ -376,24 +351,7 @@ export default function App() {
 
         {/* Main View Area */}
         <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-6 pb-24 space-y-6 screen-content print:hidden">
-          {/* Barra de Setup do cliente */}
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p className="text-slate-400">
-              Setup: {sellerSetup.clientName || 'cliente não definido'} · Plano {sellerSetup.plan === 'profissional' ? 'Profissional' : 'Individual'} ·{' '}
-              {[sellerSetup.usesFba ? 'FBA' : null, sellerSetup.usesDba ? 'DBA' : null].filter(Boolean).join(' + ') || 'sem logística'}
-            </p>
-            <button
-              type="button"
-              onClick={() => setActiveTab(activeTab === 'setup' ? 'overview' : 'setup')}
-              className="rounded-lg border border-slate-600/60 px-4 py-2 font-semibold hover:bg-slate-700/40 min-h-[44px]"
-            >
-              {activeTab === 'setup' ? 'Voltar ao dashboard' : 'Setup do cliente'}
-            </button>
-          </div>
-
-          {activeTab === 'setup' ? (
-            <SetupView setup={sellerSetup} onChange={setSellerSetup} accountAdsPercent={accountAdsPercent} />
-          ) : !hasData ? (
+          {!hasData ? (
             <OnboardingEmptyState
               onStartNewAnalysis={() => setIsInspectionOpen(true)}
               onLoadDemoMode={handleLoadDemo}
