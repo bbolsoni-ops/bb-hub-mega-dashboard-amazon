@@ -21,7 +21,8 @@ import { DEFAULT_SELLER_SETUP, SellerSetup, fbaProgramFromSetup } from '../confi
 export function reconcileAmazonData(
   dataset: ParsedDataset,
   filters?: Partial<FilterState>,
-  skuEconomicsMap: Record<string, Partial<SkuUnitEconomics>> = {},   sellerSetup: SellerSetup = DEFAULT_SELLER_SETUP ): {}
+  skuEconomicsMap: Record<string, Partial<SkuUnitEconomics>> = {},
+  sellerSetup: SellerSetup = DEFAULT_SELLER_SETUP
 ): {
   metrics: ReconciledMetrics;
   skusSummary: SkuUnitEconomics[];
