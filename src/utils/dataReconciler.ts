@@ -17,11 +17,11 @@ import {
   AMAZON_BR_CATEGORIES,
 } from './amazonFeesCalculator';
 import { standardizeDate } from './csvParser';
-
+import { DEFAULT_SELLER_SETUP, SellerSetup, fbaProgramFromSetup } from '../config/sellerSetup';
 export function reconcileAmazonData(
   dataset: ParsedDataset,
   filters?: Partial<FilterState>,
-  skuEconomicsMap: Record<string, Partial<SkuUnitEconomics>> = {}
+  skuEconomicsMap: Record<string, Partial<SkuUnitEconomics>> = {},   sellerSetup: SellerSetup = DEFAULT_SELLER_SETUP ): {}
 ): {
   metrics: ReconciledMetrics;
   skusSummary: SkuUnitEconomics[];
@@ -373,7 +373,11 @@ export function reconcileAmazonData(
   for (const c of dataset.cogsList || []) {
     if (c.sku) cogsBySku.set(c.sku, c.cogs || 0);
   }
-
+const allSkuRows = Array.from(skuMap.values());
+  const accountGross = allSkuRows.reduce((sum, r) => sum + r.grossSales, 0);
+  const accountAds = allSkuRows.reduce((sum, r) => sum + r.adsSpend, 0);
+  const accountAdsPercent = accountGross > 0 ? (accountAds / accountGross) * 100 : 0;
+  const adsPercentForRule = sellerSetup.adsInvestmentPercentLast30d ?? accountAdsPercent;
   let totalStoreCogs = 0;
   let totalStoreContribMargin = 0;
   let hasAnyMissingCogs = false;
@@ -396,8 +400,8 @@ export function reconcileAmazonData(
     const categoryName = categoryObj ? categoryObj.name : 'Casa & Cozinha';
     const weightGrams = overrides.weightGrams ?? 450;
     const logisticsChannel = overrides.logisticsChannel || 'DBA';
-    const hasSp50Discount = overrides.hasSp50Discount ?? true;
-    const fbaProgram = overrides.fbaProgram || 'experimente_r6';
+    const hasSp50Discount = overrides.hasSp50Discount ?? sellerSetup.dbaHalfFeePromoActive;
+    const fbaProgram = overrides.fbaProgram || fbaProgramFromSetup(sellerSetup);
 
     // Retrieve commission preview from official report if uploaded (preferencialmente por Child ASIN)
     const commPreviewRow = (dataset.commissionPreview || []).find(
@@ -449,11 +453,11 @@ export function reconcileAmazonData(
       }
     }
 
-    const skuAdsPercent = item.grossSales > 0 ? (item.adsSpend / item.grossSales) * 100 : 0;
+    
     const dbaCalc = calculateDbaFee(pmv, weightGrams, hasSp50Discount);
     const dbaFee = overrides.dbaFee ?? dbaCalc.effectiveFee;
 
-    const fbaCalc = calculateFbaFee(pmv, weightGrams, fbaProgram, skuAdsPercent);
+    const fbaCalc = calculateFbaFee(pmv, weightGrams, fbaProgram, adsPercentForRule);
     const fbaFee = overrides.fbaFee ?? fbaCalc.effectiveFee;
 
     const logisticsFeeUnit = logisticsChannel === 'FBA' ? fbaFee : logisticsChannel === 'DBA' ? dbaFee : 0;
