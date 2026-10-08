@@ -22,6 +22,7 @@ import { ConsolidatedReportModal } from './components/ConsolidatedReportModal';
 import { AcceptanceTestsModal } from './components/AcceptanceTestsModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SetupView } from './components/SetupView';
+import { ResultBeforeCogsPanel } from './components/ResultBeforeCogsPanel';
 import { getDemoDataset } from './utils/demoData';
 import { createEmptyDataset } from './utils/csvParser';
 import { reconcileAmazonData } from './utils/dataReconciler';
@@ -406,10 +407,13 @@ export default function App() {
 
             {/* 5. Precificação */}
             {(activeTab === 'pricing' || activeTab === 'profitability') && (
-              <ProfitabilityView
-                skusSummary={skusWithEconomics}
-                onUpdateSkuEconomics={handleUpdateSkuEconomics}
-              />
+              <>
+                <ResultBeforeCogsPanel skus={skusWithEconomics} />
+                <ProfitabilityView
+                  skusSummary={skusWithEconomics}
+                  onUpdateSkuEconomics={handleUpdateSkuEconomics}
+                />
+              </>
             )}
 
             {/* Rentabilidade Real */}
