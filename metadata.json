@@ -1,0 +1,6 @@
+{
+  "name": "Mega Dashboard Amazon Brasil — Gestão Comercial, Pedidos & Ads",
+  "description": "Plataforma analítica e executiva para avaliação de contas Amazon Brasil: conciliação de relatórios comerciais, pedidos e Amazon Ads, auditoria de dados e plano de ação priorizado para operação enxuta.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

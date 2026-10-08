@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BB Hub | Gestão de Contas Amazon</title>
+    <script>
+      // Suppress benign WebSocket / Vite HMR connection warnings in cloud preview environment
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = (event && event.reason) ? (event.reason.message || String(event.reason)) : '';
+        if (reason && (reason.indexOf('WebSocket') !== -1 || reason.indexOf('websocket') !== -1)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
+    </script>
+    <!-- Indian Type Foundry Fontshare: Satoshi & General Sans with Helvetica Neue / sans-serif fallback -->
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,800,700,600,500,400,300&f[]=general-sans@700,600,500,400&display=swap" rel="stylesheet" />
+    <meta name="description" content="BB Hub | Gestão de Contas Amazon — Plataforma intuitiva para importar relatórios CSV/TSV da Amazon Brasil, auditar dados, analisar vendas, pedidos e Amazon Ads, e orientar decisões de alta eficiência." />
+    <meta property="og:title" content="BB Hub | Gestão de Contas Amazon" />
+    <meta property="og:description" content="BB Hub | Gestão de Contas Amazon — Plataforma intuitiva para importar relatórios CSV/TSV da Amazon Brasil, auditar dados, analisar vendas, pedidos e Amazon Ads, e orientar decisões de alta eficiência." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
