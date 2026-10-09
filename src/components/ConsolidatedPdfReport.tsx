@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { AmazonData } from '../types/amazon';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -8,78 +8,40 @@ interface ConsolidatedPdfReportProps {
   store: string;
 }
 
-const brl = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const number = (value: number) => value.toLocaleString('pt-BR');
-const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
-
 export const ConsolidatedPdfReport: React.FC<ConsolidatedPdfReportProps> = ({ data, store }) => {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const metrics = useMemo(() => {
-    const orders = data?.orders;
-    const ads = data?.ads;
-    const products = data?.products;
-    const profitability = data?.profitability;
-    const traffic = data?.traffic;
-
-    return {
-      revenue: orders?.totalRevenue || 0,
-      orders: orders?.totalOrders || 0,
-      ticket: orders?.averageTicket || 0,
-      spend: ads?.totalSpend || 0,
-      roas: ads?.roas || 0,
-      acos: ads?.acos || 0,
-      activeSkus: products?.activeSkus || 0,
-      outOfStock: products?.outOfStock || 0,
-      lowStock: products?.lowStock || 0,
-      netMargin: profitability?.netMargin || 0,
-      netProfit: profitability?.netProfit || 0,
-      views: traffic?.totalViews || 0,
-      sessions: traffic?.sessions || 0,
-      conversion: traffic?.conversionRate || 0,
-    };
-  }, [data]);
-
-  const dateLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date());
-  const generatedAt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
-  const seller = store?.trim() || 'Seller não informado';
 
   const handleDownload = async () => {
     setGenerating(true);
     setError(null);
 
     try {
-      const root = document.getElementById('pdf-slides-root');
-      if (!root) throw new Error('Estrutura do relatório não encontrada. Recarregue a página e tente novamente.');
+      const element = document.getElementById('pdf-container');
+      if (!element) throw new Error('Container do PDF não encontrado');
 
-      const slides = Array.from(root.querySelectorAll<HTMLElement>('.pdf-slide'));
-      if (!slides.length) throw new Error('Nenhuma página de relatório foi encontrada.');
+      const slides = element.querySelectorAll<HTMLElement>('.pdf-slide');
+      if (slides.length === 0) throw new Error('Nenhuma página encontrada');
 
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
-      for (let index = 0; index < slides.length; index += 1) {
-        const slide = slides[index];
-        const canvas = await html2canvas(slide, {
-          scale: 1.5,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          windowWidth: 800,
-        });
-        const image = canvas.toDataURL('image/jpeg', 0.94);
-        if (index > 0) pdf.addPage();
-        pdf.addImage(image, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+      for (let i = 0; i < slides.length; i++) {
+        const slide = slides[i];
+        const canvas = await html2canvas(slide, { scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
       }
 
-      const safeSeller = seller.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'seller';
-      pdf.save(`relatorio-executivo-${safeSeller}-${new Date().toISOString().slice(0, 10)}.pdf`);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Não foi possível gerar o PDF.';
+      const fileName = `relatorio-${store || 'seller'}.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(message);
-      console.error('Erro ao gerar relatório PDF:', cause);
+      console.error('Erro ao gerar PDF:', err);
     } finally {
       setGenerating(false);
     }
@@ -87,158 +49,334 @@ export const ConsolidatedPdfReport: React.FC<ConsolidatedPdfReportProps> = ({ da
 
   if (!data) {
     return (
-      <section className="p-8 max-w-4xl">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <div className="text-4xl mb-3">📭</div>
-          <h2 className="text-2xl font-bold text-slate-800">Nenhum dado disponível para o relatório</h2>
-          <p className="mt-2 text-slate-600">Carregue os relatórios do Seller antes de gerar o PDF executivo.</p>
-        </div>
-      </section>
+      <div className="p-8 text-center">
+        <p className="text-xl">📭 Sem dados para gerar relatório</p>
+        <p className="mt-2 text-gray-600">Carregue os arquivos CSV primeiro.</p>
+      </div>
     );
   }
 
-  const stockAlerts = (data.alerts?.stock || []).slice(0, 4);
-  const pricingAlerts = (data.alerts?.pricing || []).slice(0, 4);
-  const performanceAlerts = (data.alerts?.performance || []).slice(0, 4);
+  const revenue = data.orders?.totalRevenue || 0;
+  const orders = data.orders?.totalOrders || 0;
+  const ticket = data.orders?.averageTicket || 0;
+  const spend = data.ads?.totalSpend || 0;
+  const roas = data.ads?.roas || 0;
+  const acos = data.ads?.acos || 0;
+  const activeSkus = data.products?.activeSkus || 0;
+  const outOfStock = data.products?.outOfStock || 0;
+  const lowStock = data.products?.lowStock || 0;
+  const netMargin = data.profitability?.netMargin || 0;
+  const netProfit = data.profitability?.netProfit || 0;
+  const views = data.traffic?.totalViews || 0;
+  const sessions = data.traffic?.sessions || 0;
+  const conversion = data.traffic?.conversionRate || 0;
+
+  const stockAlerts = data.alerts?.stock || [];
+  const pricingAlerts = data.alerts?.pricing || [];
+  const performanceAlerts = data.alerts?.performance || [];
+
+  const currentDate = new Date().toLocaleDateString('pt-BR');
+  const monthYear = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const sellerName = store || 'Seller';
 
   return (
-    <section className="p-6 max-w-6xl">
-      <div className="rounded-2xl bg-gradient-to-r from-slate-950 via-blue-950 to-blue-700 p-7 text-white shadow-xl">
-        <p className="text-blue-200 text-sm font-semibold tracking-widest">RELATÓRIO EXECUTIVO</p>
-        <h1 className="mt-2 text-3xl font-bold">Apresentação mensal do Seller</h1>
-        <p className="mt-2 text-blue-100">PDF profissional com indicadores, alertas e plano de ação.</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button onClick={handleDownload} disabled={generating} className="rounded-xl bg-white px-5 py-3 font-bold text-blue-700 shadow hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60">
-            {generating ? 'Gerando PDF...' : 'Baixar Relatório Executivo (PDF)'}
-          </button>
-          <span className="rounded-xl border border-blue-300/40 px-4 py-3 text-sm text-blue-100">Seller: <strong>{seller}</strong></span>
-          <span className="rounded-xl border border-blue-300/40 px-4 py-3 text-sm text-blue-100">Período: <strong>{dateLabel}</strong></span>
-        </div>
+    <div className="p-6">
+      <div className="mb-6">
+        <button
+          onClick={handleDownload}
+          disabled={generating}
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold"
+        >
+          {generating ? '⏳ Gerando PDF...' : '📄 Baixar Relatório Executivo'}
+        </button>
+        {error && <p className="mt-2 text-red-600">❌ Erro: {error}</p>}
       </div>
 
-      {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><strong>Não foi possível gerar o PDF:</strong> {error}</div>}
-
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-800">O PDF incluirá 8 páginas</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm text-slate-700">
-          {['Capa e contexto', 'Visão comercial', 'Performance de Ads', 'Catálogo e estoque', 'Rentabilidade', 'Tráfego orgânico', 'Central de alertas', 'Plano de ação'].map((item, index) => <div key={item} className="rounded-xl bg-slate-50 p-3"><strong>{index + 1}.</strong> {item}</div>)}
-        </div>
-      </div>
-
-      <div id="pdf-slides-root" aria-hidden="true" style={{ position: 'fixed', left: '-10000px', top: 0, width: 800, pointerEvents: 'none' }}>
+      <div id="pdf-container" style={{ position: 'fixed', left: '-10000px', top: 0 }}>
         <style>{`
-          .pdf-slide { width: 800px; height: 1131px; box-sizing: border-box; overflow: hidden; color: #0f172a; background: #ffffff; font-family: Arial, Helvetica, sans-serif; padding: 56px; position: relative; }
-          .pdf-cover { color: white; background: linear-gradient(135deg, #071a3c 0%, #123f87 58%, #1d74d5 100%); }
-          .pdf-eyebrow { color: #60a5fa; font-size: 15px; letter-spacing: 2px; font-weight: 700; text-transform: uppercase; }
-          .pdf-cover .pdf-eyebrow { color: #bfdbfe; }
-          .pdf-title { margin: 10px 0 10px; font-size: 38px; line-height: 1.12; font-weight: 800; }
-          .pdf-subtitle { color: #64748b; font-size: 18px; line-height: 1.5; }
-          .pdf-cover .pdf-subtitle { color: #dbeafe; }
-          .pdf-rule { width: 92px; height: 6px; border-radius: 9px; background: #60a5fa; margin: 28px 0; }
-          .pdf-cover-card { margin-top: 50px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.1); border-radius: 22px; padding: 28px; font-size: 20px; line-height: 1.8; }
-          .pdf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 30px 0; }
-          .pdf-card { border-radius: 18px; padding: 20px; border: 1px solid #e2e8f0; background: #f8fafc; min-height: 112px; }
-          .pdf-card-label { color: #64748b; font-size: 14px; font-weight: 700; }
-          .pdf-card-value { margin-top: 12px; font-size: 25px; font-weight: 800; color: #0f3f89; line-height: 1.1; }
-          .pdf-section { margin-top: 25px; border: 1px solid #e2e8f0; border-radius: 18px; padding: 23px; background: #fff; }
-          .pdf-section h3 { margin: 0 0 14px; color: #0f3f89; font-size: 21px; }
-          .pdf-section p, .pdf-section li { font-size: 17px; line-height: 1.52; }
-          .pdf-list { margin: 0; padding-left: 21px; }
-          .pdf-list li { margin: 9px 0; }
-          .pdf-highlight { background: #eff6ff; border-color: #bfdbfe; }
-          .pdf-warning { background: #fff7ed; border-color: #fed7aa; }
-          .pdf-danger { background: #fef2f2; border-color: #fecaca; }
-          .pdf-success { background: #f0fdf4; border-color: #bbf7d0; }
-          .pdf-footer { position: absolute; left: 56px; right: 56px; bottom: 34px; display: flex; justify-content: space-between; color: #64748b; font-size: 13px; border-top: 1px solid #e2e8f0; padding-top: 14px; }
-          .pdf-cover .pdf-footer { color: #dbeafe; border-color: rgba(255,255,255,.25); }
-          .pdf-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-          .pdf-ranking { display: flex; align-items: center; gap: 12px; margin: 10px 0; padding: 11px 13px; border-radius: 12px; background: #f8fafc; }
-          .pdf-rank { width: 27px; height: 27px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; background: #dbeafe; color: #1d4ed8; }
+          .pdf-slide { width: 800px; min-height: 1130px; background: white; padding: 40px; font-family: Arial, sans-serif; box-sizing: border-box; }
+          .slide-cover { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+          .slide-cover h1 { font-size: 48px; margin: 20px 0; }
+          .slide-cover p { font-size: 20px; margin: 10px 0; }
+          .slide-title { font-size: 32px; color: #1e40af; margin-bottom: 20px; font-weight: bold; }
+          .slide-subtitle { font-size: 18px; color: #6b7280; margin-bottom: 30px; }
+          .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 30px 0; }
+          .metric-card { background: #f3f4f6; padding: 20px; border-radius: 12px; border-left: 4px solid #3b82f6; }
+          .metric-card.green { border-left-color: #10b981; background: #ecfdf5; }
+          .metric-card.purple { border-left-color: #8b5cf6; background: #f5f3ff; }
+          .metric-card.red { border-left-color: #ef4444; background: #fef2f2; }
+          .metric-card.orange { border-left-color: #f97316; background: #fff7ed; }
+          .metric-label { font-size: 14px; color: #6b7280; font-weight: 600; text-transform: uppercase; }
+          .metric-value { font-size: 32px; font-weight: bold; color: #1f2937; margin-top: 8px; }
+          .section { background: #f9fafb; padding: 20px; border-radius: 12px; margin: 20px 0; border: 2px solid #e5e7eb; }
+          .section h3 { font-size: 20px; color: #1e40af; margin-bottom: 15px; }
+          .section ul { margin: 0; padding-left: 20px; }
+          .section li { margin: 8px 0; font-size: 16px; }
+          .footer { margin-top: 60px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center; color: #9ca3af; font-size: 14px; }
         `}</style>
 
-        <article className="pdf-slide pdf-cover">
-          <p className="pdf-eyebrow">Amazon Brasil · Gestão Comercial</p>
-          <h1 className="pdf-title" style={{ fontSize: 52, marginTop: 25 }}>MEGA DASHBOARD<br />AMAZON BRASIL</h1>
-          <div className="pdf-rule" />
-          <p className="pdf-subtitle" style={{ fontSize: 24 }}>Relatório Executivo de Performance</p>
-          <div className="pdf-cover-card">
-            <div><strong>Seller:</strong> {seller}</div>
-            <div><strong>Período analisado:</strong> {dateLabel}</div>
-            <div><strong>Relatório gerado em:</strong> {generatedAt}</div>
+        {/* SLIDE 1 - CAPA */}
+        <div className="pdf-slide slide-cover">
+          <div style={{ fontSize: '72px', marginBottom: '20px' }}>📊</div>
+          <h1>MEGA DASHBOARD</h1>
+          <h1>AMAZON BRASIL</h1>
+          <div style={{ width: '100px', height: '4px', background: 'white', margin: '30px 0' }}></div>
+          <p style={{ fontSize: '28px', fontWeight: 'bold' }}>📋 Relatório Executivo</p>
+          <div style={{ marginTop: '50px', background: 'rgba(255,255,255,0.2)', padding: '30px', borderRadius: '16px' }}>
+            <p style={{ fontSize: '22px', margin: '15px 0' }}><strong>Seller:</strong> {sellerName}</p>
+            <p style={{ fontSize: '22px', margin: '15px 0' }}><strong>Período:</strong> {monthYear}</p>
+            <p style={{ fontSize: '22px', margin: '15px 0' }}><strong>Gerado em:</strong> {currentDate}</p>
           </div>
-          <div style={{ marginTop: 140, fontSize: 70 }}>📊</div>
-          <footer className="pdf-footer"><span>BB Hub Market</span><span>Relatório confidencial</span></footer>
-        </article>
+          <div style={{ fontSize: '72px', marginTop: '60px' }}>🚀</div>
+        </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">01 · Visão Comercial</p><h2 className="pdf-title">Vendas e resultado do período</h2><p className="pdf-subtitle">Panorama dos principais indicadores comerciais do Seller.</p>
-          <div className="pdf-grid"><Metric label="Faturamento" value={brl(metrics.revenue)} /><Metric label="Pedidos / unidades" value={number(metrics.orders)} color="#15803d" /><Metric label="Ticket médio" value={brl(metrics.ticket)} color="#7e22ce" /></div>
-          <div className="pdf-section pdf-highlight"><h3>Leitura executiva</h3><ul className="pdf-list"><li>O período totalizou <strong>{brl(metrics.revenue)}</strong> em receita, com <strong>{number(metrics.orders)}</strong> pedidos ou unidades processadas.</li><li>O ticket médio registrado foi de <strong>{brl(metrics.ticket)}</strong>.</li><li>Use a visão de Pedidos para acompanhar concentração de vendas por produto e dias de maior demanda.</li></ul></div>
-          <div className="pdf-section"><h3>Direcionamento</h3><p>Priorize os produtos com maior participação no faturamento e valide disponibilidade de estoque para evitar perda de conversão.</p></div>
-          <Footer seller={seller} page="2" />
-        </article>
+        {/* SLIDE 2 - VENDAS */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">📈 VENDAS DO MÊS</h2>
+          <p className="slide-subtitle">Panorama dos principais indicadores comerciais</p>
+          
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <div className="metric-label">Faturamento</div>
+              <div className="metric-value">R$ {revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="metric-card green">
+              <div className="metric-label">Unidades</div>
+              <div className="metric-value">{orders.toLocaleString('pt-BR')}</div>
+            </div>
+            <div className="metric-card purple">
+              <div className="metric-label">Ticket Médio</div>
+              <div className="metric-value">R$ {ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">02 · Mídia paga</p><h2 className="pdf-title">Performance de Amazon Ads</h2><p className="pdf-subtitle">Eficiência do investimento e retorno das campanhas no período.</p>
-          <div className="pdf-grid"><Metric label="Investimento Ads" value={brl(metrics.spend)} color="#b91c1c" /><Metric label="ROAS" value={`${metrics.roas.toFixed(2)}x`} color="#15803d" /><Metric label="ACOS" value={percent(metrics.acos)} color="#c2410c" /></div>
-          <div className="pdf-section pdf-highlight"><h3>Leitura executiva</h3><ul className="pdf-list"><li>O investimento em mídia foi de <strong>{brl(metrics.spend)}</strong>.</li><li>O retorno sobre investimento (ROAS) foi de <strong>{metrics.roas.toFixed(2)}x</strong>.</li><li>O ACOS consolidado ficou em <strong>{percent(metrics.acos)}</strong>.</li></ul></div>
-          <div className="pdf-section pdf-warning"><h3>Recomendação</h3><p>Realocar orçamento para campanhas com retorno consistente e revisar termos de busca e campanhas cujo ACOS esteja acima da meta do Seller.</p></div>
-          <Footer seller={seller} page="3" />
-        </article>
+          <div className="section">
+            <h3>💡 Insights</h3>
+            <ul>
+              <li>Faturamento total: <strong>R$ {revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></li>
+              <li>Total de pedidos: <strong>{orders.toLocaleString('pt-BR')} unidades</strong></li>
+              <li>Ticket médio: <strong>R$ {ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></li>
+            </ul>
+          </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">03 · Catálogo</p><h2 className="pdf-title">Saúde do catálogo e estoque</h2><p className="pdf-subtitle">Indicadores para preservar disponibilidade e potencial de venda.</p>
-          <div className="pdf-grid"><Metric label="SKUs ativos" value={number(metrics.activeSkus)} /><Metric label="Sem estoque" value={number(metrics.outOfStock)} color="#b91c1c" /><Metric label="Estoque baixo" value={number(metrics.lowStock)} color="#c2410c" /></div>
-          <div className="pdf-two-col"><div className="pdf-section pdf-danger"><h3>Prioridade imediata</h3><p><strong>{number(metrics.outOfStock)}</strong> SKUs estão sem estoque. Avalie reposição, status de listing e impacto nos produtos de maior giro.</p></div><div className="pdf-section pdf-warning"><h3>Prevenção</h3><p><strong>{number(metrics.lowStock)}</strong> SKUs exigem acompanhamento de cobertura para evitar ruptura nos próximos dias.</p></div></div>
-          <div className="pdf-section pdf-success"><h3>Direcionamento</h3><p>Combine giro de pedidos, margem e disponibilidade para definir a sequência de reposição. Dê prioridade a itens rentáveis e com maior demanda.</p></div>
-          <Footer seller={seller} page="4" />
-        </article>
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 2 de 8</div>
+        </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">04 · Resultado</p><h2 className="pdf-title">Rentabilidade e eficiência</h2><p className="pdf-subtitle">Leitura financeira consolidada dos dados processados.</p>
-          <div className="pdf-grid"><Metric label="Margem líquida" value={percent(metrics.netMargin)} color="#15803d" /><Metric label="Lucro líquido" value={brl(metrics.netProfit)} color="#0f3f89" /><Metric label="Receita total" value={brl(metrics.revenue)} color="#7e22ce" /></div>
-          <div className="pdf-section pdf-highlight"><h3>Leitura executiva</h3><ul className="pdf-list"><li>O lucro líquido estimado foi de <strong>{brl(metrics.netProfit)}</strong>.</li><li>A margem líquida estimada foi de <strong>{percent(metrics.netMargin)}</strong>.</li><li>Valide a composição de taxas, frete, mídia e custo de produto na aba de Rentabilidade para decisões por SKU.</li></ul></div>
-          <div className="pdf-section pdf-warning"><h3>Recomendação</h3><p>Trate margem e preço em conjunto: produtos com boa venda, mas baixa margem, devem passar por revisão de custo, logística e estratégia de Ads.</p></div>
-          <Footer seller={seller} page="5" />
-        </article>
+        {/* SLIDE 3 - ADS */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">🎯 PERFORMANCE DE ADS</h2>
+          <p className="slide-subtitle">Eficiência do investimento em mídia paga</p>
+          
+          <div className="metrics-grid">
+            <div className="metric-card red">
+              <div className="metric-label">Spend Total</div>
+              <div className="metric-value">R$ {spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="metric-card green">
+              <div className="metric-label">ROAS</div>
+              <div className="metric-value">{roas.toFixed(2)}x</div>
+            </div>
+            <div className="metric-card orange">
+              <div className="metric-label">ACOS</div>
+              <div className="metric-value">{(acos * 100).toFixed(1)}%</div>
+            </div>
+          </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">05 · Tráfego</p><h2 className="pdf-title">Visibilidade e conversão</h2><p className="pdf-subtitle">Indicadores de descoberta e eficiência dos listings.</p>
-          <div className="pdf-grid"><Metric label="Visualizações" value={number(metrics.views)} /><Metric label="Sessões" value={number(metrics.sessions)} color="#7e22ce" /><Metric label="Conversão" value={percent(metrics.conversion)} color="#15803d" /></div>
-          <div className="pdf-section pdf-highlight"><h3>Leitura executiva</h3><ul className="pdf-list"><li>Foram registradas <strong>{number(metrics.views)}</strong> visualizações e <strong>{number(metrics.sessions)}</strong> sessões.</li><li>A taxa de conversão consolidada foi de <strong>{percent(metrics.conversion)}</strong>.</li><li>Listings com visualização alta e conversão baixa devem ser priorizados em conteúdo, preço, frete e prova social.</li></ul></div>
-          <div className="pdf-section"><h3>Direcionamento</h3><p>Otimize título, imagens, conteúdo A+, termos de busca e competitividade de preço dos produtos com maior potencial de tráfego.</p></div>
-          <Footer seller={seller} page="6" />
-        </article>
+          <div className="section">
+            <h3>💡 Análise</h3>
+            <ul>
+              <li>Investimento em Ads: <strong>R$ {spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></li>
+              <li>ROAS: <strong>{roas.toFixed(2)}x</strong> {roas > 3 ? '✅ Excelente' : '⚠️ Atenção'}</li>
+              <li>ACOS: <strong>{(acos * 100).toFixed(1)}%</strong></li>
+            </ul>
+          </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">06 · Riscos</p><h2 className="pdf-title">Central de alertas</h2><p className="pdf-subtitle">Pontos que merecem ação ou validação prioritária.</p>
-          <div className="pdf-section pdf-danger"><h3>Estoque</h3><AlertList alerts={stockAlerts} empty="Nenhum alerta crítico de estoque identificado." /></div>
-          <div className="pdf-section pdf-warning"><h3>Precificação</h3><AlertList alerts={pricingAlerts} empty="Nenhum alerta relevante de precificação identificado." /></div>
-          <div className="pdf-section pdf-highlight"><h3>Performance</h3><AlertList alerts={performanceAlerts} empty="Nenhum alerta crítico de performance identificado." /></div>
-          <Footer seller={seller} page="7" />
-        </article>
+          <div className="section" style={{ background: '#ecfdf5', borderColor: '#10b981' }}>
+            <h3 style={{ color: '#059669' }}>✅ Recomendações</h3>
+            <ul>
+              <li>Revisar campanhas com ACOS acima de 30%</li>
+              <li>Otimizar keywords de baixo desempenho</li>
+              <li>Aumentar budget em campanhas com ROAS alto</li>
+            </ul>
+          </div>
 
-        <article className="pdf-slide">
-          <p className="pdf-eyebrow">07 · Próximas ações</p><h2 className="pdf-title">Plano de ação recomendado</h2><p className="pdf-subtitle">Sequência prática para a próxima rotina de gestão do Seller.</p>
-          <div className="pdf-section pdf-danger"><h3>Prioridade alta · esta semana</h3><ul className="pdf-list"><li>Repor e validar listings dos itens sem estoque.</li><li>Corrigir produtos com risco de ruptura e maior impacto em faturamento.</li><li>Revisar campanhas com custo elevado e retorno abaixo da meta.</li></ul></div>
-          <div className="pdf-section pdf-warning"><h3>Prioridade média · próximas duas semanas</h3><ul className="pdf-list"><li>Otimizar os listings de alto tráfego com baixa conversão.</li><li>Aprimorar conteúdo, palavras-chave e imagens dos produtos estratégicos.</li><li>Revisar preço, custos e margem por SKU prioritário.</li></ul></div>
-          <div className="pdf-section pdf-success"><h3>Rotina recomendada</h3><p>Faça uma revisão semanal de estoque, Ads, conversão e margem. Reavalie este relatório após a entrada de novos arquivos do Seller.</p></div>
-          <Footer seller={seller} page="8" />
-        </article>
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 3 de 8</div>
+        </div>
+
+        {/* SLIDE 4 - CATÁLOGO */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">📦 CATÁLOGO DE PRODUTOS</h2>
+          <p className="slide-subtitle">Saúde do catálogo e gestão de estoque</p>
+          
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <div className="metric-label">SKUs Ativos</div>
+              <div className="metric-value">{activeSkus.toLocaleString('pt-BR')}</div>
+            </div>
+            <div className="metric-card red">
+              <div className="metric-label">Sem Estoque</div>
+              <div className="metric-value">{outOfStock.toLocaleString('pt-BR')}</div>
+            </div>
+            <div className="metric-card orange">
+              <div className="metric-label">Estoque Baixo</div>
+              <div className="metric-value">{lowStock.toLocaleString('pt-BR')}</div>
+            </div>
+          </div>
+
+          <div className="section" style={{ background: '#fef2f2', borderColor: '#ef4444' }}>
+            <h3 style={{ color: '#dc2626' }}>⚠️ Ação Urgente</h3>
+            <ul>
+              <li><strong>{outOfStock}</strong> produtos sem estoque - repor imediatamente</li>
+              <li><strong>{lowStock}</strong> produtos com estoque baixo - monitorar</li>
+            </ul>
+          </div>
+
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 4 de 8</div>
+        </div>
+
+        {/* SLIDE 5 - RENTABILIDADE */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">💰 RENTABILIDADE</h2>
+          <p className="slide-subtitle">Análise de margens e lucratividade</p>
+          
+          <div className="metrics-grid">
+            <div className="metric-card green">
+              <div className="metric-label">Margem Líquida</div>
+              <div className="metric-value">{(netMargin * 100).toFixed(1)}%</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Lucro Líquido</div>
+              <div className="metric-value">R$ {netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div className="metric-card purple">
+              <div className="metric-label">Receita Total</div>
+              <div className="metric-value">R$ {revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+
+          <div className="section">
+            <h3>💡 Análise Financeira</h3>
+            <ul>
+              <li>Margem líquida: <strong>{(netMargin * 100).toFixed(1)}%</strong></li>
+              <li>Lucro líquido: <strong>R$ {netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></li>
+              <li>Receita total: <strong>R$ {revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></li>
+            </ul>
+          </div>
+
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 5 de 8</div>
+        </div>
+
+        {/* SLIDE 6 - TRÁFEGO */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">🔍 TRÁFEGO ORGÂNICO</h2>
+          <p className="slide-subtitle">Visibilidade e conversão dos listings</p>
+          
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <div className="metric-label">Total Views</div>
+              <div className="metric-value">{views.toLocaleString('pt-BR')}</div>
+            </div>
+            <div className="metric-card green">
+              <div className="metric-label">Conversão</div>
+              <div className="metric-value">{(conversion * 100).toFixed(2)}%</div>
+            </div>
+            <div className="metric-card purple">
+              <div className="metric-label">Sessões</div>
+              <div className="metric-value">{sessions.toLocaleString('pt-BR')}</div>
+            </div>
+          </div>
+
+          <div className="section">
+            <h3>💡 Métricas de Tráfego</h3>
+            <ul>
+              <li>Total de views: <strong>{views.toLocaleString('pt-BR')}</strong></li>
+              <li>Taxa de conversão: <strong>{(conversion * 100).toFixed(2)}%</strong></li>
+              <li>Sessões totais: <strong>{sessions.toLocaleString('pt-BR')}</strong></li>
+            </ul>
+          </div>
+
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 6 de 8</div>
+        </div>
+
+        {/* SLIDE 7 - ALERTAS */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">🚨 CENTRAL DE ALERTAS</h2>
+          <p className="slide-subtitle">Pontos que exigem atenção prioritária</p>
+          
+          <div className="section" style={{ background: '#fef2f2', borderColor: '#ef4444' }}>
+            <h3 style={{ color: '#dc2626' }}>🔴 Estoque Crítico</h3>
+            {stockAlerts.length > 0 ? (
+              <ul>{stockAlerts.map((alert, i) => <li key={i}>⚠️ {String(alert)}</li>)}</ul>
+            ) : (
+              <p style={{ color: '#10b981' }}>✅ Sem alertas críticos de estoque</p>
+            )}
+          </div>
+
+          <div className="section" style={{ background: '#fff7ed', borderColor: '#f97316' }}>
+            <h3 style={{ color: '#ea580c' }}>🟡 Precificação</h3>
+            {pricingAlerts.length > 0 ? (
+              <ul>{pricingAlerts.map((alert, i) => <li key={i}>⚠️ {String(alert)}</li>)}</ul>
+            ) : (
+              <p style={{ color: '#10b981' }}>✅ Sem alertas de precificação</p>
+            )}
+          </div>
+
+          <div className="section" style={{ background: '#ffedd5', borderColor: '#f97316' }}>
+            <h3 style={{ color: '#ea580c' }}>🟠 Performance</h3>
+            {performanceAlerts.length > 0 ? (
+              <ul>{performanceAlerts.map((alert, i) => <li key={i}>⚠️ {String(alert)}</li>)}</ul>
+            ) : (
+              <p style={{ color: '#10b981' }}>✅ Performance dentro do esperado</p>
+            )}
+          </div>
+
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 7 de 8</div>
+        </div>
+
+        {/* SLIDE 8 - ACTION PLAN */}
+        <div className="pdf-slide">
+          <h2 className="slide-title">✅ ACTION PLAN</h2>
+          <p className="slide-subtitle">Plano de ação para as próximas semanas</p>
+          
+          <div className="section" style={{ background: '#fef2f2', borderColor: '#ef4444' }}>
+            <h3 style={{ color: '#dc2626' }}>🔴 Prioridade Alta (esta semana)</h3>
+            <ul>
+              <li>☐ Repor estoque dos produtos críticos</li>
+              <li>☐ Ajustar preço de produtos acima do Buy Box</li>
+              <li>☐ Pausar campanhas com ACOS > 30%</li>
+              <li>☐ Revisar listings sem conversão</li>
+            </ul>
+          </div>
+
+          <div className="section" style={{ background: '#fffbeb', borderColor: '#f59e0b' }}>
+            <h3 style={{ color: '#d97706' }}>🟡 Prioridade Média (próx. 2 semanas)</h3>
+            <ul>
+              <li>☐ Otimizar palavras-chave de anúncios</li>
+              <li>☐ Criar 3 novos anúncios Sponsored</li>
+              <li>☐ Revisar keywords negativas</li>
+              <li>☐ Atualizar imagens de produtos principais</li>
+            </ul>
+          </div>
+
+          <div className="section" style={{ background: '#f0fdf4', borderColor: '#22c55e' }}>
+            <h3 style={{ color: '#16a34a' }}>🟢 Próximos Passos</h3>
+            <ul>
+              <li>📅 Próxima revisão: <strong>{new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}</strong></li>
+              <li>📊 Acompanhar métricas diárias no dashboard</li>
+              <li>📧 Enviar relatório para equipe</li>
+            </ul>
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: '60px', padding: '30px', background: '#f3f4f6', borderRadius: '16px' }}>
+            <div style={{ fontSize: '64px', marginBottom: '20px' }}>🚀</div>
+            <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#1f2937' }}><strong>Seller:</strong> {sellerName}</p>
+            <p style={{ fontSize: '16px', color: '#6b7280', marginTop: '10px' }}>Relatório gerado em {currentDate}</p>
+          </div>
+
+          <div className="footer">Relatório gerado para <strong>{sellerName}</strong> • Página 8 de 8</div>
+        </div>
+
       </div>
-    </section>
+    </div>
   );
-};
-
-const Metric: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color }) => (
-  <div className="pdf-card"><div className="pdf-card-label">{label}</div><div className="pdf-card-value" style={color ? { color } : undefined}>{value}</div></div>
-);
-
-const Footer: React.FC<{ seller: string; page: string }> = ({ seller, page }) => (
-  <footer className="pdf-footer"><span>Seller: {seller}</span><span>Relatório Executivo · {page}/8</span></footer>
-);
-
-const AlertList: React.FC<{ alerts: unknown[]; empty: string }> = ({ alerts, empty }) => {
-  if (!alerts.length) return <p>✅ {empty}</p>;
-  return <ul className="pdf-list">{alerts.map((alert, index) => <li key={index}>⚠️ {String(alert)}</li>)}</ul>;
 };
